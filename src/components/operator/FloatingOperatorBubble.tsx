@@ -37,6 +37,8 @@ import {
 import OrbitalCoreMark, {
   OrbitalRingBack, OrbitalRingFront, ensureOrbitalCoreStyles, ORBITAL_STATE_COLORS,
 } from '@/components/intelligence/OrbitalCoreMark';
+// R-OPERATOR-PANEL-TWO-COLUMN-V1: pure layout decisions for the expanded panel.
+import { computeOverlayLayout, clampOverlayLeft, capOverlayHeight } from './overlayLayout';
 import { getContext, subscribe } from '@/services/intelligence/liveContext/liveContextStore';
 import { initLiveContextEngine, syncFromAppState } from '@/services/intelligence/liveContext/liveContextEngine';
 import { computeContextSuggestions, getMinimizedPreviewText, hasUrgentSuggestion } from '@/services/intelligence/liveContext/contextSuggestions';
@@ -87,7 +89,8 @@ import {
 const POSITION_KEY = 'cellhub:operatorBubble:position:v1';
 const ENABLED_KEY  = 'cellhub:operatorBubble:enabled:v1';
 const BUBBLE_SIZE  = 110;         // R-COMPANION-BUBBLE-REDESIGN: 72 → 110 px (iridescent orb)
-const OVERLAY_WIDTH = 296;
+// R-OPERATOR-PANEL-TWO-COLUMN-V1: overlay width now comes from
+// overlayLayout.computeOverlayLayout (296 narrow / 560 two-column).
 const DRAG_THRESHOLD_PX = 5;
 const EDGE_PADDING = 16;
 const Z_INDEX = 880;
@@ -1039,22 +1042,33 @@ export default function FloatingOperatorBubble() {
   // the overlay never exceeds the viewport. Flip to whichever side has more room.
   // maxOverlayHeight caps the overlay height and enables internal scrolling.
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+  // R-OPERATOR-PANEL-TWO-COLUMN-V1: wide viewports get the 560px two-column
+  // control-center panel; narrow viewports keep the original 296px column.
+  // Recomputed every render — the existing resize listener re-renders, so
+  // placement re-clamps on resize/resolution change automatically.
+  const { width: overlayWidth, twoColumn: overlayTwoCol } = computeOverlayLayout(viewportW, EDGE_PADDING);
   const spaceBelow = viewportH - (position.y + BUBBLE_SIZE + 8) - EDGE_PADDING;
   const spaceAbove = position.y - 8 - EDGE_PADDING;
   const overlayBelow = spaceBelow >= spaceAbove;
-  const maxOverlayHeight = Math.max(120, Math.min(
-    overlayBelow ? spaceBelow : spaceAbove,
-    viewportH - EDGE_PADDING * 4,
-  ));
+  const maxOverlayHeight = capOverlayHeight(
+    Math.max(120, Math.min(
+      overlayBelow ? spaceBelow : spaceAbove,
+      viewportH - EDGE_PADDING * 4,
+    )),
+    viewportH,
+  );
   const overlayTop = overlayBelow
     ? position.y + BUBBLE_SIZE + 8
     : Math.max(EDGE_PADDING, position.y - 8 - Math.min(maxOverlayHeight, spaceAbove));
-  const overlayLeft = pillOnLeft
-    ? Math.max(EDGE_PADDING, position.x + BUBBLE_SIZE - OVERLAY_WIDTH)
-    : Math.min(
-        (typeof window !== 'undefined' ? window.innerWidth : OVERLAY_WIDTH) - OVERLAY_WIDTH - EDGE_PADDING,
-        position.x,
-      );
+  // Both edges clamped: a saved bubble position that would push the wider
+  // panel off-screen is corrected without erasing the saved position.
+  const overlayLeft = clampOverlayLeft(
+    pillOnLeft ? position.x + BUBBLE_SIZE - overlayWidth : position.x,
+    overlayWidth,
+    viewportW,
+    EDGE_PADDING,
+  );
 
   return (
     <>
@@ -1340,7 +1354,7 @@ export default function FloatingOperatorBubble() {
             position: 'fixed',
             top: overlayTop,
             left: overlayLeft,
-            width: OVERLAY_WIDTH,
+            width: overlayWidth,
             // R-BUBBLE-SCROLL-FIX-V1: cap height to available viewport space
             // so content is never stranded off-screen on small windows.
             maxHeight: maxOverlayHeight,
@@ -1590,6 +1604,18 @@ export default function FloatingOperatorBubble() {
             </div>
           )}
 
+          {/* R-OPERATOR-PANEL-TWO-COLUMN-V1: below the full-width region
+              (header · workflow resume · reviewing-sale context/hint), wide
+              viewports split into two columns. DOM order stays logical for
+              keyboard/screen-reader users: left column (snapshot → insights →
+              quick actions → guided sequence) then right column (suggestions →
+              ask input → menu actions). Narrow viewports collapse to the
+              original single column. Layout-only — zero handler changes. */}
+          <div style={overlayTwoCol
+            ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', alignItems: 'start', minWidth: 0 }
+            : { display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>{/* left column */}
+
           {/* CUSTOMER-SNAPSHOT-AMBIENT-INTELLIGENCE-V1: compact customer HUD —
               "never open a customer blind". Label/value rows + tiny signal
               chips, sourced from the memoized snapshot composer. Rendered
@@ -1838,6 +1864,9 @@ export default function FloatingOperatorBubble() {
             );
           })()}
 
+          </div>{/* /left column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>{/* right column */}
+
           {/* Live-context suggestions + executable actions (R-INTELLIGENCE-ACTION-EXECUTION-V1) */}
           {suggestionsWithActions.length > 0 && (
             <div style={{
@@ -1846,6 +1875,11 @@ export default function FloatingOperatorBubble() {
               borderRadius: '0.5rem',
               padding: '0.5rem 0.65rem',
               display: 'flex', flexDirection: 'column', gap: '0.35rem',
+              // R-OPERATOR-PANEL-TWO-COLUMN-V1: suggestions get their own
+              // bounded scroll region so a long list never stretches the
+              // whole panel. Order/severity/labels/actions untouched.
+              maxHeight: overlayTwoCol ? '34vh' : '40vh',
+              overflowY: 'auto',
             }}>
               <div style={{ fontSize: '0.68rem', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.1rem' }}>
                 {t('operator.suggestions.title')}
@@ -2046,6 +2080,8 @@ export default function FloatingOperatorBubble() {
           >
             ↺ {t('operator.overlay.resetPosition')}
           </button>
+          </div>{/* /right column */}
+          </div>{/* /two-column region */}
           </div>{/* /scrollable inner div */}
         </div>
       )}
