@@ -59,8 +59,12 @@ export const ORBITAL_CORE_CSS = `
   to   { transform: rotate(360deg); }
 }
 .ch-orbital-breath { animation: chOrbitalBreath 6s ease-in-out infinite; transform-origin: center; }
-.ch-orbital-spin-idle       { animation: chOrbitalSpin 40s linear infinite; }
-.ch-orbital-spin-processing { animation: chOrbitalSpin 12s linear infinite; }
+/* AUDIT H1: the spin group lives in a frame translated to the ellipse
+   center, so its correct local rotation origin is 0 0. Without this,
+   Chromium resolves the default SVG transform-origin (50% 50% of the
+   view-box) IN LOCAL UNITS and the satellite orbits an offset point. */
+.ch-orbital-spin-idle       { animation: chOrbitalSpin 40s linear infinite; transform-origin: 0 0; }
+.ch-orbital-spin-processing { animation: chOrbitalSpin 12s linear infinite; transform-origin: 0 0; }
 @media (prefers-reduced-motion: reduce) {
   .ch-orbital-breath,
   .ch-orbital-spin-idle,

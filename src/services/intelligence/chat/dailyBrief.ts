@@ -366,7 +366,9 @@ export function handleOperatorDailyBriefV3(
 
   // Suggested focus — single sentence
   lines.push('');
-  lines.push(`**🧠 ${t('chat.operatorBriefV3.focusHeader')}** ${focusSentence}`);
+  // AUDIT L1 (R-ORBITAL-CORE-IDENTITY-V1): brain emoji removed from the
+  // customer-facing brief line; wording/format/localization untouched.
+  lines.push(`**${t('chat.operatorBriefV3.focusHeader')}** ${focusSentence}`);
 
   // Buttons: pull from the top priority's actions OR a small set of
   // generic openers based on whichever sections fired.

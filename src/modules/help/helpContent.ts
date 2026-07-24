@@ -684,8 +684,10 @@ export const HELP_MODULES: HelpModuleEntry[] = [
   // ── Intelligence / AI Assistant ───────────────────────────
   {
     id: 'intelligence',
-    icon: '🧠',
-    title: { en: 'Intelligence / AI Assistant', es: 'Intelligence / Asistente IA', pt: 'Intelligence / Assistente IA' },
+    // AUDIT M2 (R-ORBITAL-CORE-IDENTITY-V1): brain retired; helpContent is a
+    // string-only data model, so '◉' is the compatible non-emoji fallback.
+    icon: '◉',
+    title: { en: 'CellHub Intelligence', es: 'Inteligencia de CellHub', pt: 'Inteligência CellHub' },
     summary: {
       en: 'Ask the store operator brain questions and get deterministic answers.',
       es: 'Hazle preguntas al cerebro operador de la tienda y obtén respuestas deterministas.',

@@ -92,6 +92,16 @@ describe('OrbitalCoreMark — accessibility', () => {
     expect(named).toContain('aria-label="CellHub Intelligence — 2 opportunities"');
   });
 
+  it('AUDIT H1: both satellite spin classes declare an explicit transform-origin of 0 0', () => {
+    // Without this, Chromium resolves the default SVG transform-origin
+    // (50% 50% of the view-box) in the spin group's LOCAL units and the
+    // satellite orbits an offset point instead of the ellipse center.
+    const idleRule = ORBITAL_CORE_CSS.match(/\.ch-orbital-spin-idle\s*\{[^}]*\}/)?.[0] || '';
+    const procRule = ORBITAL_CORE_CSS.match(/\.ch-orbital-spin-processing\s*\{[^}]*\}/)?.[0] || '';
+    expect(idleRule).toContain('transform-origin: 0 0');
+    expect(procRule).toContain('transform-origin: 0 0');
+  });
+
   it('reduced motion: the injected stylesheet freezes orbit and breathing', () => {
     expect(ORBITAL_CORE_CSS).toContain('@media (prefers-reduced-motion: reduce)');
     expect(ORBITAL_CORE_CSS).toContain('animation: none !important');

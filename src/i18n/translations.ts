@@ -5255,7 +5255,8 @@ export const translations: TranslationDictionary = {
   'settings.nav.commissions':              { en: 'Commission Income',           es: 'Ingresos por Comisión',         pt: 'Renda de Comissões' },
   'settings.nav.hardware':                 { en: 'Hardware',                    es: 'Hardware',                      pt: 'Hardware' },
   'settings.nav.whatsapp':                 { en: 'WhatsApp',                    es: 'WhatsApp',                      pt: 'WhatsApp' },
-  'settings.nav.ai':                       { en: 'AI Assistant',                es: 'Asistente IA',                  pt: 'Assistente IA' },
+  // AUDIT M1 (R-ORBITAL-CORE-IDENTITY-V1): legacy AI Assistant naming retired.
+  'settings.nav.ai':                       { en: 'CellHub Intelligence',        es: 'Inteligencia de CellHub',       pt: 'Inteligência CellHub' },
   'settings.nav.employees':               { en: 'Employees',                   es: 'Empleados',                     pt: 'Funcionários' },
   'settings.nav.backup':                   { en: 'Backup & Restore',            es: 'Respaldo y Restauración',       pt: 'Backup e Restauração' },
 
@@ -7055,7 +7056,7 @@ export const translations: TranslationDictionary = {
   'ai.attention':        { en: 'ATTENTION',                              es: 'ATENCIÓN',                              pt: 'ATENÇÃO' },
   'ai.quickPrompts':     { en: 'QUICK PROMPTS',                          es: 'PREGUNTAS RÁPIDAS',                     pt: 'PERGUNTAS RÁPIDAS' },
   'ai.clearHistory':     { en: 'Clear history',                          es: 'Borrar historial',                      pt: 'Limpar histórico' },
-  'ai.setupBannerPre':   { en: 'To use AI Assistant, add your Claude API key in', es: 'Para usar el Asistente AI, agrega tu Claude API key en', pt: 'Para usar o Assistente AI, adicione sua chave da API Claude em' },
+  'ai.setupBannerPre':   { en: 'To use CellHub Intelligence, add your Claude API key in', es: 'Para usar la Inteligencia de CellHub, agrega tu Claude API key en', pt: 'Para usar a Inteligência CellHub, adicione sua chave da API Claude em' },
   'ai.settingsPath':     { en: 'Settings → AI',                          es: 'Ajustes → IA',                          pt: 'Configurações → IA' },
   'ai.greeting':         { en: "Hi! I'm your business assistant.",        es: '¡Hola! Soy tu asistente de negocios.',  pt: 'Olá! Sou seu assistente de negócios.' },
   'ai.greetingSub':      { en: 'Ask me about sales, repairs, inventory, or anything about your store.', es: 'Pregúntame sobre ventas, reparaciones, inventario, o cualquier cosa del negocio.', pt: 'Me pergunte sobre vendas, reparos, estoque, ou qualquer coisa do negócio.' },
@@ -7092,8 +7093,8 @@ export const translations: TranslationDictionary = {
   'ai.qpTopSellers':        { en: "What are my top selling items this month?",               es: "¿Cuáles son mis productos más vendidos este mes?",         pt: "Quais são meus produtos mais vendidos este mês?" },
   'ai.qpCbe':               { en: "Explain CBE fees for CA",                                 es: "Explícame los cobros CBE de California",                   pt: "Explique as taxas CBE da Califórnia" },
   'ai.assistantTitle':      { en: 'CellHub Intelligence',                                     es: 'Inteligencia de CellHub',                                  pt: 'Inteligência CellHub' },
-  'ai.configuredReady':     { en: 'AI Assistant is configured and ready',                    es: 'Asistente AI configurado y listo',                          pt: 'Assistente AI configurado e pronto' },
-  'ai.addKeyPrompt':        { en: 'Add an API key above to enable AI Assistant',             es: 'Agrega una API key arriba para habilitar el Asistente AI', pt: 'Adicione uma API key acima para habilitar o Assistente AI' },
+  'ai.configuredReady':     { en: 'CellHub Intelligence is configured and ready',            es: 'Inteligencia de CellHub configurada y lista',               pt: 'Inteligência CellHub configurada e pronta' },
+  'ai.addKeyPrompt':        { en: 'Add an API key above to enable CellHub Intelligence',     es: 'Agrega una API key arriba para habilitar la Inteligencia de CellHub', pt: 'Adicione uma API key acima para habilitar a Inteligência CellHub' },
 
   // ── Intelligence module ───────────────────────────────────
   'intelligence.tryQuestion': { en: 'Try a question:',        es: 'Prueba con una pregunta:', pt: 'Experimente uma pergunta:' },

@@ -29,6 +29,8 @@ import StoreManagement from './StoreManagement';
 // LOCAL-LAN-PAIRING-PHASE-1-V1
 import LocalNetworkPanel from './LocalNetworkPanel';
 import FirebaseSetupModal from './FirebaseSetupModal';
+// AUDIT M1 (R-ORBITAL-CORE-IDENTITY-V1): canonical CellHub Intelligence mark.
+import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 import ImportTab from './ImportTab';
 // R-COMMS-SMS-INFRA-CLEANUP: removed SMS_PROVIDERS / SmsProviderId / isLegacyProvider
 // + SmsSetupWizard imports. Service files deleted; tab + wizard retired.
@@ -366,7 +368,9 @@ export default function SettingsModule() {
     { id: 'hardware',    icon: '🖨️', label: t('settings.nav.hardware') },
     // R-COMMS-SMS-INFRA-CLEANUP: 'sms' sidebar entry removed.
     { id: 'whatsapp',    icon: '💬',  label: t('settings.nav.whatsapp') },
-    { id: 'ai',          icon: '🤖',  label: t('settings.nav.ai') },
+    // AUDIT M1: robot retired; '◉' is only the string fallback — the nav
+    // render swaps in the canonical mark.
+    { id: 'ai',          icon: '◉',  label: t('settings.nav.ai') },
     { id: 'employees',   icon: '👥',  label: t('settings.nav.employees') },
     // R-FINANCIAL-PRIVACY-V1: owner-only financial visibility toggle.
     // Inline label (no translations.ts touch — additive-only spec).
@@ -1754,7 +1758,9 @@ export default function SettingsModule() {
 
           {activeSection === 'ai' && (
             <div className="space-y-5">
-              <h2 className="text-lg font-semibold text-white mb-4">🤖 {t('ai.assistantTitle')}</h2>
+              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <OrbitalCoreMark variant="mark" size={20} decorative /> {t('ai.assistantTitle')}
+              </h2>
               {/* Provider selector */}
               <div>
                 <label className="text-xs text-slate-400 block mb-2">{t('settings.aiProvider')}</label>
@@ -2037,10 +2043,10 @@ export default function SettingsModule() {
                     </p>
                     <p style={{ fontSize: '0.72rem', color: '#bbf7d0', lineHeight: 1.5, margin: 0 }}>
                       {lang === 'es'
-                        ? 'Ganancia, costo, margen, markup, COGS e ingreso neto se ocultan a empleados no propietarios en Dashboard, Reportes, Inventario, Impuestos, Órdenes de Compra, Historial de Clientes, Intelligence chat y el AI Assistant.'
+                        ? 'Ganancia, costo, margen, markup, COGS e ingreso neto se ocultan a empleados no propietarios en Dashboard, Reportes, Inventario, Impuestos, Órdenes de Compra, Historial de Clientes, Intelligence chat y la Inteligencia de CellHub.'
                         : lang === 'pt'
-                        ? 'Lucro, custo, margem, markup, COGS e receita líquida ficam ocultos para funcionários não-proprietários em Painel, Relatórios, Estoque, Impostos, Ordens de Compra, Histórico de Clientes, Intelligence chat e AI Assistant.'
-                        : 'Profit, cost, margin, markup, COGS, and net income are hidden from non-owner employees across Dashboard, Reports, Inventory, Tax, Purchase Orders, Customer History, Intelligence chat, and AI Assistant.'}
+                        ? 'Lucro, custo, margem, markup, COGS e receita líquida ficam ocultos para funcionários não-proprietários em Painel, Relatórios, Estoque, Impostos, Ordens de Compra, Histórico de Clientes, Intelligence chat e a Inteligência CellHub.'
+                        : 'Profit, cost, margin, markup, COGS, and net income are hidden from non-owner employees across Dashboard, Reports, Inventory, Tax, Purchase Orders, Customer History, Intelligence chat, and CellHub Intelligence.'}
                     </p>
                   </div>
                 )}
@@ -2147,7 +2153,7 @@ export default function SettingsModule() {
                           'Intelligence chat: 4 intents de ganancia responden mensaje seguro',
                           'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
                           'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
-                          'AI Assistant: líneas de ganancia/margen stripped del prompt',
+                          'Inteligencia de CellHub: líneas de ganancia/margen stripped del prompt',
                         ] : lang === 'pt' ? [
                           'Painel: tile "Lucro Bruto Estimado" + margem %',
                           'Estoque: coluna Custo, tile "Potencial de Lucro", margem no formulário',
@@ -2158,7 +2164,7 @@ export default function SettingsModule() {
                           'Intelligence chat: 4 intents de lucro respondem mensagem segura',
                           'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
                           'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
-                          'AI Assistant: linhas de lucro/margem removidas do prompt',
+                          'Inteligência CellHub: linhas de lucro/margem removidas do prompt',
                         ] : [
                           'Dashboard: "Estimated Gross Profit" tile + margin %',
                           'Inventory: Cost column, "Profit Potential" stat, margin in form modal',
@@ -2169,7 +2175,7 @@ export default function SettingsModule() {
                           'Intelligence chat: 4 profit intents return a safe message',
                           'Intelligence chips: "Profit at risk", "Cash locked in dead stock"',
                           'Quick actions: "Highest-margin opportunities", "Slow days / dead stock"',
-                          'AI Assistant: profit/margin lines stripped from the LLM prompt',
+                          'CellHub Intelligence: profit/margin lines stripped from the LLM prompt',
                         ]).map((line, i) => (
                           <li key={i}>{line}</li>
                         ))}
