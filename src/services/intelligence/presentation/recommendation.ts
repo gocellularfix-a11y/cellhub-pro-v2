@@ -19,11 +19,16 @@ const CAUSE_RECOMMENDATION: Record<EvidenceQualityCause, (lang: PresenterLang) =
     'Add product costs so profit and margin are accurate.',
     'Agrega el costo de los productos para que la ganancia y el margen sean exactos.',
     'Adicione o custo dos produtos para que o lucro e a margem fiquem exatos.'),
-  // R-WORTH-A-LOOK-UX-V1: direct, owner-actionable step (audited wording).
+  // R-WORTH-A-LOOK-CTA-V1 (Option B): STEP-1 inspection found NO editable
+  // correction surface for a committed sale's carrier (the only committed-sale
+  // edit flow — Reports handleEditSaleItem — edits price/qty exclusively, and
+  // Business Manager is read-only by design). The advice therefore promises
+  // only what the destination can do: REVIEW the affected data. It must not
+  // claim the owner can assign a carrier at the destination.
   excessive_unknown_classification: (l) => tri(l,
-    'Review and assign the correct carrier.',
-    'Revisa las transacciones y asigna la compañía correcta.',
-    'Revise as transações e atribua a operadora correta.'),
+    'Review which transactions are missing a carrier.',
+    'Revisa cuáles transacciones no tienen compañía asignada.',
+    'Revise quais transações estão sem operadora.'),
   absent_activity: (l) => tri(l,
     'Record sales in this period to enable analysis.',
     'Registra ventas en este período para poder analizarlo.',

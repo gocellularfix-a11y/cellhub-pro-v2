@@ -213,11 +213,14 @@ function evidenceQualityCard(e: EvidenceQualityEvidence, lang: PresenterLang): P
     summary,
     expandableDetails: details,
     actions: [{ kind: 'improve_data_quality', category: 'data_quality' }],
-    // R-WORTH-A-LOOK-UX-V1: the carrier-labeling gap gets a direct CTA. No
-    // dedicated correction surface exists, so consumers route it to the
-    // Business Manager evidence section (safe existing destination).
+    // R-WORTH-A-LOOK-CTA-V1 (Option B — intentional destination selection):
+    // STEP-1 inspection confirmed CellHub has NO editable surface for a
+    // committed sale's carrier (Reports' edit flow = price/qty only; Business
+    // Manager = read-only evidence). The CTA therefore routes to the Business
+    // Manager EVIDENCE section and its label promises exactly that — viewing
+    // the affected data — never a correction the destination cannot perform.
     ...(e.cause === 'excessive_unknown_classification'
-      ? { ctaLabel: tri(lang, 'Review transactions', 'Revisar transacciones', 'Revisar transações') }
+      ? { ctaLabel: tri(lang, 'View affected data', 'Ver datos afectados', 'Ver dados afetados') }
       : {}),
   };
 }

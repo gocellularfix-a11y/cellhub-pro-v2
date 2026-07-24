@@ -105,15 +105,34 @@ describe('carrier-labeling insight — clear, evidence-honest wording', () => {
     }
   });
 
-  it('carries the direct action and the Review-transactions CTA', () => {
+  it('R-WORTH-A-LOOK-CTA-V1: advice + CTA promise only what the destination can do (Option B)', () => {
+    // STEP-1 inspection: no editable carrier-correction surface exists
+    // (Reports edit = price/qty only; Business Manager = read-only), so the
+    // pairing is honest REVIEW wording + a View-affected-data CTA.
     const en = buildInsightCard(carrierGapInsight(0.23), 'en');
-    expect(en.recommendation).toBe('Review and assign the correct carrier.');
-    expect(en.ctaLabel).toBe('Review transactions');
-    expect(buildInsightCard(carrierGapInsight(0.23), 'es').ctaLabel).toBe('Revisar transacciones');
-    expect(buildInsightCard(carrierGapInsight(0.23), 'pt').ctaLabel).toBe('Revisar transações');
+    expect(en.recommendation).toBe('Review which transactions are missing a carrier.');
+    expect(en.ctaLabel).toBe('View affected data');
+    expect(buildInsightCard(carrierGapInsight(0.23), 'es').recommendation).toBe('Revisa cuáles transacciones no tienen compañía asignada.');
+    expect(buildInsightCard(carrierGapInsight(0.23), 'es').ctaLabel).toBe('Ver datos afectados');
+    expect(buildInsightCard(carrierGapInsight(0.23), 'pt').recommendation).toBe('Revise quais transações estão sem operadora.');
+    expect(buildInsightCard(carrierGapInsight(0.23), 'pt').ctaLabel).toBe('Ver dados afetados');
     // The CTA survives grouping as a singleton group CTA.
     const groups = groupCards(orderCards([buildInsightCard(carrierGapInsight(0.23), 'en')]), 'en');
-    expect(groups[0].ctaLabel).toBe('Review transactions');
+    expect(groups[0].ctaLabel).toBe('View affected data');
+  });
+
+  it('never promises a correction the destination cannot perform (no "assign" in advice/CTA)', () => {
+    for (const lang of ['en', 'es', 'pt'] as const) {
+      const card = buildInsightCard(carrierGapInsight(0.23), lang);
+      const actionable = `${card.recommendation} ${card.ctaLabel}`.toLowerCase();
+      expect(actionable).not.toContain('assign');
+      expect(actionable).not.toContain('asigna ');   // "asignada" (state) is fine; the verb is not
+      expect(actionable).not.toContain('atribua');
+      expect(actionable).not.toContain('atribu ');
+    }
+    // The intentional-selection evidence is documented at the decision site.
+    const factory = readFileSync('src/services/intelligence/presentation/cardFactory.ts', 'utf8');
+    expect(factory).toContain('R-WORTH-A-LOOK-CTA-V1 (Option B — intentional destination selection)');
   });
 
   it('severity, confidence and identity pass through unchanged', () => {
