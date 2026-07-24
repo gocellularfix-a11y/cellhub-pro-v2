@@ -17,7 +17,7 @@
 // Pure helpers are exported for deterministic tests (node test env, no DOM).
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/store/AppProvider';
 import { useTranslation } from '@/i18n';
 import type { PresenterLang } from '@/services/intelligence/presentation';
@@ -29,6 +29,17 @@ import OrbitalCoreMark from '@/components/intelligence/OrbitalCoreMark';
 
 const Z_INDEX = 850; // below the operator orb (880); different corner anyway.
 
+// R-WORTH-A-LOOK-UX-V1: the launcher previously sat at left:20 — ON TOP of
+// the 285px sidebar's bottom controls, reading as "attached to the tabs".
+// It now floats at the lower-left of the CONTENT area (sidebar width + gap),
+// clamped by CSS so launcher + panel always stay inside the viewport with an
+// edge margin (panel 320 + 16 margin → 100vw-352px ceiling; 16px floor).
+// Pure CSS clamp = correct after resize/resolution change with zero JS.
+// Bottom-right stays reserved for the operator orb + cart pill (no overlap).
+// Drag + persisted position: documented later enhancement (kept out of this
+// round to avoid coupling with the orb's positioning store).
+const LAUNCHER_LEFT = 'clamp(16px, calc(100vw - 352px), 305px)';
+
 export default function RecommendationBubble() {
   const { dispatch } = useApp();
   const { locale } = useTranslation();
@@ -37,6 +48,9 @@ export default function RecommendationBubble() {
 
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // R-WORTH-A-LOOK-UX-V1: focus returns to the launcher when the panel closes.
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
 
   // ESC collapses the expanded panel (keyboard accessibility).
   useEffect(() => {
@@ -44,6 +58,16 @@ export default function RecommendationBubble() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // R-WORTH-A-LOOK-UX-V1: after close (ESC, toggle, CTA navigation), move
+  // focus back to the launcher so keyboard users never lose their place.
+  useEffect(() => {
+    if (open) { wasOpenRef.current = true; return; }
+    if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      launcherRef.current?.focus();
+    }
   }, [open]);
 
   // Fail safe: engine error / no model / dismissed → nothing renders.
@@ -59,7 +83,7 @@ export default function RecommendationBubble() {
   };
 
   return (
-    <div style={{ position: 'fixed', left: 20, bottom: 20, zIndex: Z_INDEX, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+    <div style={{ position: 'fixed', left: LAUNCHER_LEFT, bottom: 20, zIndex: Z_INDEX, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
       {open && (
         <div
           data-cellhub-recommendation-panel
@@ -93,6 +117,20 @@ export default function RecommendationBubble() {
                       {g.recommendation && (
                         <div style={{ color: gTone.fg, fontSize: '0.78rem', marginTop: 4 }}>{g.recommendation}</div>
                       )}
+                      {/* R-WORTH-A-LOOK-UX-V1: direct CTA when the theme
+                          provides one ("Review transactions" / "View
+                          performance"). Destination = the existing Business
+                          Manager evidence surface (no dedicated correction
+                          module exists — safe fallback preserved below). */}
+                      {g.ctaLabel && (
+                        <button
+                          type="button"
+                          onClick={openManager}
+                          style={{ marginTop: 6, background: 'rgba(148,163,184,0.10)', color: '#e2e8f0', border: `1px solid ${gTone.border}`, borderRadius: 8, padding: '4px 10px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {g.ctaLabel} →
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -112,6 +150,7 @@ export default function RecommendationBubble() {
 
       <button
         type="button"
+        ref={launcherRef}
         data-cellhub-recommendation-bubble
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}

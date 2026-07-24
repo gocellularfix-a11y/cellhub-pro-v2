@@ -59,6 +59,10 @@ export interface InsightCard {
   /** Localized supporting lines (the numbers behind the card). */
   expandableDetails: string[];
   actions: InsightActionHint[];
+  /** R-WORTH-A-LOOK-UX-V1: optional direct call-to-action label ("Review
+   *  transactions"). Presentation-only — consumers navigate to the existing
+   *  Business Manager evidence surface (safe fallback, no new module). */
+  ctaLabel?: string;
 }
 
 /** A coherent theme. Singletons are groups of one (headline/summary/
@@ -73,6 +77,8 @@ export interface InsightGroup {
   summary: string;
   recommendation: string | null;
   members: InsightCard[];
+  /** R-WORTH-A-LOOK-UX-V1: optional direct CTA label for this theme. */
+  ctaLabel?: string;
 }
 
 export interface ExecutivePresentation {

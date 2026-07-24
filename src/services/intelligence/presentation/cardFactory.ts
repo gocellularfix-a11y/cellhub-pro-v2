@@ -135,18 +135,38 @@ const CAUSE_ICON: Record<EvidenceQualityCause, string> = {
   missing_customer_attribution: '👤',
 };
 
-function evidenceQualityHeadSummary(cause: EvidenceQualityCause, lang: PresenterLang): { headline: string; summary: string } {
+function evidenceQualityHeadSummary(e: EvidenceQualityEvidence, lang: PresenterLang): { headline: string; summary: string } {
+  const cause = e.cause;
   switch (cause) {
     case 'insufficient_cost_coverage':
       return {
         headline: tri(lang, 'Some sales are missing product costs.', 'Algunas ventas no tienen el costo del producto.', 'Algumas vendas estão sem o custo do produto.'),
         summary: tri(lang, 'Profit and margin figures may be incomplete.', 'Las cifras de ganancia y margen pueden estar incompletas.', 'Os números de lucro e margem podem estar incompletos.'),
       };
-    case 'excessive_unknown_classification':
+    case 'excessive_unknown_classification': {
+      // R-WORTH-A-LOOK-UX-V1: the detector supplies a measured SHARE of
+      // carrier-activity sales without a resolvable carrier (never an exact
+      // record count) — so the headline presents that real percentage, and
+      // falls back to honest non-numeric wording when no ratio was measured.
+      // No count is ever implied that the detector did not supply.
+      const pct = e.measuredRatio !== null ? Math.round(e.measuredRatio * 100) : null;
+      const headline = pct !== null
+        ? tri(lang,
+            `About ${pct}% of recent phone transactions are missing a carrier`,
+            `Cerca del ${pct}% de las transacciones de telefonía recientes no tienen compañía asignada`,
+            `Cerca de ${pct}% das transações recentes de telefonia estão sem operadora`)
+        : tri(lang,
+            'Some recent phone transactions are missing a carrier assignment.',
+            'Algunas transacciones de telefonía recientes no tienen compañía asignada.',
+            'Algumas transações recentes de telefonia estão sem operadora.');
       return {
-        headline: tri(lang, "Some carrier sales aren't clearly labeled.", 'Algunas ventas de compañías no están bien etiquetadas.', 'Algumas vendas de operadoras não estão bem rotuladas.'),
-        summary: tri(lang, 'Carrier reports may be incomplete.', 'Los reportes de compañías pueden estar incompletos.', 'Os relatórios de operadoras podem estar incompletos.'),
+        headline,
+        summary: tri(lang,
+          'These payments or activations were saved without AT&T, Verizon, T-Mobile, or another carrier. Your carrier reports may therefore show incomplete totals.',
+          'Estos pagos o activaciones se guardaron sin indicar AT&T, Verizon, T-Mobile u otra compañía. Por eso, los reportes por compañía pueden mostrar totales incompletos.',
+          'Esses pagamentos ou ativações foram salvos sem AT&T, Verizon, T-Mobile ou outra operadora. Por isso, os relatórios por operadora podem mostrar totais incompletos.'),
       };
+    }
     case 'absent_activity':
       return {
         headline: tri(lang, 'No recorded sales in the recent period.', 'No hay ventas registradas en el período reciente.', 'Não há vendas registradas no período recente.'),
@@ -173,7 +193,7 @@ function evidenceQualityHeadSummary(cause: EvidenceQualityCause, lang: Presenter
 }
 
 function evidenceQualityCard(e: EvidenceQualityEvidence, lang: PresenterLang): Partial<InsightCard> {
-  const { headline, summary } = evidenceQualityHeadSummary(e.cause, lang);
+  const { headline, summary } = evidenceQualityHeadSummary(e, lang);
   const details: string[] = [];
   if (e.measuredRatio !== null && e.ratioThreshold !== null) {
     details.push(tri(lang,
@@ -193,6 +213,12 @@ function evidenceQualityCard(e: EvidenceQualityEvidence, lang: PresenterLang): P
     summary,
     expandableDetails: details,
     actions: [{ kind: 'improve_data_quality', category: 'data_quality' }],
+    // R-WORTH-A-LOOK-UX-V1: the carrier-labeling gap gets a direct CTA. No
+    // dedicated correction surface exists, so consumers route it to the
+    // Business Manager evidence section (safe existing destination).
+    ...(e.cause === 'excessive_unknown_classification'
+      ? { ctaLabel: tri(lang, 'Review transactions', 'Revisar transacciones', 'Revisar transações') }
+      : {}),
   };
 }
 
@@ -223,5 +249,7 @@ export function buildInsightCard(insight: ProactiveInsight, lang: PresenterLang)
     recommendation: composeRecommendation(insight, lang),
     expandableDetails: parts.expandableDetails ?? [],
     actions: (parts.actions as InsightActionHint[] | undefined) ?? [],
+    // R-WORTH-A-LOOK-UX-V1: optional direct CTA label (carrier-gap card).
+    ...(parts.ctaLabel ? { ctaLabel: parts.ctaLabel } : {}),
   };
 }

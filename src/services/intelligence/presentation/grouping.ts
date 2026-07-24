@@ -46,12 +46,13 @@ export function applySuppression(orderedCards: InsightCard[]): { visible: Insigh
 function themeGroup(
   groupKey: string, members: InsightCard[], icon: string,
   headline: string, summary: string, recommendation: string | null,
+  ctaLabel?: string,
 ): InsightGroup {
   const priority = members.reduce<InsightCard['priority']>(
     (best, c) => (priorityRank(c.priority) < priorityRank(best) ? c.priority : best),
     members[0].priority,
   );
-  return { groupKey, priority, icon, headline, summary, recommendation, members: [...members].sort(compareCards) };
+  return { groupKey, priority, icon, headline, summary, recommendation, members: [...members].sort(compareCards), ...(ctaLabel ? { ctaLabel } : {}) };
 }
 
 function singleton(card: InsightCard): InsightGroup {
@@ -63,6 +64,8 @@ function singleton(card: InsightCard): InsightGroup {
     summary: card.summary,
     recommendation: card.recommendation,
     members: [card],
+    // R-WORTH-A-LOOK-UX-V1: a card-level CTA survives as the group CTA.
+    ...(card.ctaLabel ? { ctaLabel: card.ctaLabel } : {}),
   };
 }
 
@@ -86,10 +89,22 @@ export function groupCards(cards: InsightCard[], lang: PresenterLang): InsightGr
       tri(lang, 'Start with recent sales, then review pricing and costs.', 'Empieza con las ventas recientes y luego revisa precios y costos.', 'Comece pelas vendas recentes e depois revise preços e custos.')));
   } else if (salesPos && marginPos) {
     used.add(salesPos.fingerprint); used.add(marginPos.fingerprint);
+    // R-WORTH-A-LOOK-UX-V1: evidence-honest positive summary. The exact
+    // measured deltas live on the two member cards rendered with the group
+    // (this layer only sees presentation cards); contributor/category
+    // evidence does NOT exist in these detectors, so it is never invented —
+    // the mandated fallback points the owner at the category breakdown.
     groups.push(themeGroup('business_improving', [salesPos, marginPos], '📈',
-      tri(lang, 'Sales and profit margin are both up.', 'Las ventas y el margen de ganancia están subiendo.', 'As vendas e a margem de lucro estão subindo.'),
-      tri(lang, 'Business improved on both revenue and margin this week.', 'El negocio mejoró en ingresos y margen esta semana.', 'O negócio melhorou em receita e margem nesta semana.'),
-      tri(lang, 'Identify what is working and keep doing it.', 'Identifica qué está funcionando y sigue haciéndolo.', 'Identifique o que está funcionando e continue fazendo.')));
+      tri(lang, 'Sales and profit margin improved', 'Las ventas y el margen de ganancia mejoraron', 'As vendas e a margem de lucro melhoraram'),
+      tri(lang,
+        'Sales and profit margin improved compared with the previous completed period.',
+        'Las ventas y el margen de ganancia mejoraron comparados con el período completo anterior.',
+        'As vendas e a margem de lucro melhoraram em comparação com o período completo anterior.'),
+      tri(lang,
+        'Review the category breakdown to see where the improvement came from.',
+        'Revisa el desglose por categoría para ver de dónde vino la mejora.',
+        'Revise a divisão por categoria para ver de onde veio a melhora.'),
+      tri(lang, 'View performance', 'Ver desempeño', 'Ver desempenho')));
   }
 
   if (dataQuality.length >= 2 && dataQuality.every((c) => !used.has(c.fingerprint))) {
